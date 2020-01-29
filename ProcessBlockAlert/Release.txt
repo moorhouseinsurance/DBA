@@ -1,0 +1,16 @@
+SSMS
+On DBA run
+
+.\DBA\dbo.BlockedProcess.Table.sql
+.\DBA\dbo.uspReportBlockedProcess.StoredProcedure.sql
+
+on Shared run
+.\Shared\dbo.uspQueryToHtmlTable.StoredProcedure.sql
+
+On Transactor_Live run
+.\Transactor_Live\dbo.Synonyms.sq;
+.\Transactor_Live\dbo.uspBlockedProcessInsert.StoredProcedure.sql
+
+Update DBA.dbo.uspReportBlockedProcess set email recipients.
+Create SQLAgentjob
+Runs every 1 minute to run uspBlockedProcessInsert

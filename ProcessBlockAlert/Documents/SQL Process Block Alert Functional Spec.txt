@@ -1,0 +1,7 @@
+Process Summary
+SQL Agent executes stored procedure uspBlockedProcessInsert against the target database every one minute
+uspBlockedProcessInsert collects blocked process Information from SysProcesses and stores it in table [DBA]...[BlockedProcess]
+If a Block has occurred uspBlockedProcessInsert calls [DBA]..[uspReportBlockedProcess]
+uspReportBlockedProcess Orders the current blocked processes hierarchically and formats a summary report from the data.
+The summary report table is formatted as html by [Shared]..[uspQueryToHtmlTable] as a table.
+The summary report is emailed to a recipient list held in uspReportBlockedProcess.
