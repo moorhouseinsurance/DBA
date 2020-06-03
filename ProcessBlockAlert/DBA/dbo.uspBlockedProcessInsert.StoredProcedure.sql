@@ -1,3 +1,14 @@
+USE [DBA]
+GO
+
+/****** Object:  StoredProcedure [dbo].[uspBlockedProcessInsert]    Script Date: 03/06/2020 10:42:48 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
 --======================================
 --Author	D. Hostler
 --Date		23 Jan 2020
@@ -19,8 +30,8 @@ BEGIN
 		SELECT 
 			 [P].[DBID] AS [PDBID]
 			,[P].[SPID] AS [PSPID]
-			,[PO].[Name] AS [PName]
-			,[PO].[Type_Desc] AS [PType]
+			,OBJECT_NAME([PS].[objectid],[P].[DBID]) AS [PName]
+			,NULL AS [PType]
 			,[P].[hostname] AS [Phostname]
 			,[P].[program_name] AS [PProgram]
 			,[P].[cmd] AS [Pcmd]
@@ -32,8 +43,8 @@ BEGIN
 			,[P].[LastWaitType] AS [PLastWaitType]
 			,[P].[WaitResource] AS [PWaitResource]
 			,[P].[Blocked] AS [BSPID]
-			,[BO].[Name] AS [BName]
-			,[BO].[Type_Desc] AS [BType]
+			,OBJECT_NAME([BS].[objectid],[B].[DBID]) AS [BName]
+			,NULL AS [BType]
 			,[B].[hostname] AS [Bhostname]
 			,[B].[program_name] AS [BProgram]
 			,[B].[cmd] AS [Bcmd]
@@ -45,18 +56,18 @@ BEGIN
 		FROM
 			[SysProcesses] AS [P]
 			LEFT JOIN [SysProcesses] AS [B] ON [P].[Blocked] = [B].[SPID]
-			OUTER APPLY ::fn_get_sql([P].[sql_handle]) AS [PS]
-			OUTER APPLY ::fn_get_sql([B].[sql_handle]) AS [BS]
-			LEFT JOIN [sys].[objects] AS [PO] ON [PS].[objectid] = [PO].[object_id]
-			LEFT JOIN [sys].[objects] AS [BO] ON [BS].[objectid] = [BO].[object_id]
-		WHERE
+			OUTER APPLY sys.dm_exec_sql_text([P].[sql_handle]) AS [PS]
+			OUTER APPLY sys.dm_exec_sql_text([B].[sql_handle]) AS [BS]
+		WHERE 
 			[P].[Blocked] != 0 
 			AND [P].[waittime] > @wait_time_threshold
+			AND [BS].[text] IS NOT NULL
 	)
 	INSERT INTO [dbo].[BlockedProcess]
-	SELECT
+	SELECT DISTINCT
 		 @TimeStamp AS [PolledDateTime]
 		,[B].*
+		--INTO [BlockedProcess]
 	FROM
 		[B]
 	;
@@ -65,4 +76,7 @@ BEGIN
 		Exec [dbo].[uspReportBlockedProcess] @TimeStamp
 
 END
+
 GO
+
+

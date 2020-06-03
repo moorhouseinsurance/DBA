@@ -1,14 +1,25 @@
+USE [DBA]
+GO
+
+/****** Object:  StoredProcedure [dbo].[uspReportBlockedProcess]    Script Date: 03/06/2020 10:42:12 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
 --======================================
 --Author	D. Hostler
 --Date		23 Jan 2020
 --Desc		Record and Report blocked Processes
 --======================================
-alter PROCEDURE [dbo].[uspReportBlockedProcess]
+CREATE PROCEDURE [dbo].[uspReportBlockedProcess]
 	 @StartDatetime datetime
 AS
 /*
 
-	DECLARE @StartDatetime datetime = '2020-01-28 11:27:00.340'
+	DECLARE @StartDatetime datetime = '2020-06-03 05:01:00.150'
 	exec [dbo].[uspReportBlockedProcess] @StartDatetime
 
 */
@@ -47,7 +58,58 @@ BEGIN
 		</style>
 		'
 		DECLARE  @Html nvarchar(MAX)
-				,@query nvarchar(MAX) = ';WITH [CTE] AS
+				,@query nvarchar(MAX) = ';WITH [ALL] AS
+(
+	SELECT
+		 [HeadBlocker]
+		,[PSPID]
+		,[PDBID]
+		,[BSPID]
+		,[BName]
+		,[BType]
+		,[Bhostname]
+		,[BProgram]
+		,[BLoginName]
+		,[BLoginTime]
+		,[BScript]
+		,MAX([PWaitTime]) AS [PWaitTime]
+		,MAX([BlockedProcessID]) AS [BlockedProcessID]
+		,[PLastWaitType]
+		,MAX([PWaitReSource]) AS [PWaitReSource]
+		,[PName]		
+		,[PType]		
+		,[Phostname]	
+		,[PProgram]		
+		,[PLoginName]	
+		,[PLoginTime]	
+		,[PScript]		
+	FROM 
+		[DBA].[dbo].[BlockedProcess]
+	WHERE 
+		[PolledDateTime] = ''{@StartDatetime}''
+		AND [BScript] IS NOT NULL --
+	GROUP BY
+		 [HeadBlocker]
+		,[PSPID]
+		,[PDBID]
+		,[BSPID]
+		,[BName]
+		,[BType]
+		,[Bhostname]
+		,[BProgram]
+		,[BLoginName]
+		,[BLoginTime]
+		,[BScript]
+		,[PLastWaitType]
+		,[PName]		
+		,[PType]		
+		,[Phostname]	
+		,[PProgram]		
+		,[PLoginName]	
+		,[PLoginTime]	
+		,[PScript]	
+) --SELECT * FROM [ALL]
+,[CTE] AS
 (
 	SELECT
 		 [HeadBlocker]	AS [HeadBlocker]
@@ -66,11 +128,11 @@ BEGIN
 		,0 AS [Level]
 		,[BlockedProcessID]
 		,[PLastWaitType]
+		,[PWaitReSource]
 	FROM 
-		[DBA].[dbo].[BlockedProcess]
+		[ALL]
 	WHERE 
-		[PolledDateTime] = ''{@StartDatetime}''
-		AND [HeadBlocker] = 1
+		[HeadBlocker] = 1
 	UNION ALL
 	SELECT
 		 [T].[HeadBlocker]	AS [HeadBlocker]
@@ -89,28 +151,26 @@ BEGIN
 		,[level] + 1
 		,[T].[BlockedProcessID]
 		,[T].[PLastWaitType]
+		,[T].[PWaitReSource]
 	FROM
 		[CTE]
-	JOIN
-		 [DBA].[dbo].[BlockedProcess] [T] ON [CTE].[PSPID] = [T].[BSPID]
-	WHERE 
-		[PolledDateTime] = ''{@StartDatetime}''
+		JOIN [ALL] AS [T] ON [CTE].[PSPID] = [T].[BSPID]
 )
    
-SELECT
+SELECT TOP 30
 	 CASE WHEN [BSPID] = 0 THEN ''HeadBlock'' ELSE '''' END AS [HeadBlock]
 	,[PSPID]
 	,CASE WHEN [BSPID] = 0 Then '''' ELSE [BSPID] END AS [BSPID]
 	,[WaitTime]/1000 AS [WaitTime (s)]	
 	,DB_NAME([DBID]) AS [Database]
 	,[Name]
-	,[Type]
 	,[LoginName]
 	,FORMAT([LoginTime],''dd/MM/yyyy hh:mm'') AS [LoginTime]
 	,[hostname]
-	,[Program]
+	,[DBA].[dbo].[svfDecodeProgram] ([Program]) AS [Program]
 	,[Script]
-	,''https://www.sqlskills.com/help/waits/'' + [PLastWaitType] AS [WaitType]
+	,CASE WHEN [PWaitReSource] Like ''Tab%'' THEN [DBA].[dbo].[svfDecodeTabWait]([PWaitReSource]) ELSE [PWaitReSource] END AS [Block Object]
+	,N''<a href="https://www.sqlskills.com/help/waits/'' + [PLastWaitType] +''">'' +[PLastWaitType] + ''</a>'' AS [WaitType]
 	,[BlockedProcessID] AS [LogID]
 	,[Path] AS [BlockOrder]
 
@@ -121,9 +181,11 @@ FROM
 ' 
 		SET @query = REPLACE(@query ,'{@StartDateTime}' ,convert(varchar(50),@StartDateTime,13))
 		DECLARE @orderBy varchar(200) = 'ORDER BY [BlockOrder]';
-		SELECT @QUERY
+		--SELECT @QUERY
 
 		EXEC [Shared].[dbo].[uspQueryToHtmlTable]  @query = @query ,@orderBy = @orderBy ,@Html = @html OUTPUT;
+		SET @Html = REPLACE(@HTML,'&lt;','<');
+		SET @Html = REPLACE(@HTML,'&gt;','>');
 
 		DECLARE @SubTitle varchar(50) 
 		SET @SubTitle = '<h2>Blocking Processes</h2>
@@ -132,18 +194,17 @@ FROM
 		<h4>Key</h4>
 		<table>
 		<tr><td>HeadBlock</td><td>If marked HeadBlock this is the start of a block chain.</td><tr>
-		<tr><td><tr><td>PSPID </td><td> Server Process ID of this process, If this is the Headblock this is the process to kill to free up the chain.</td><tr>
-		<tr><td>BSPID </td><td> Server Process ID of the Blocking process</td><tr>
-		<tr><td>Waitime  (S) </td><td> Amount of time the process has been blocked in seconds</td><tr>
-		<tr><td>Database </td><td> Database on which the process is executing</td><tr>
-		<tr><td>Name </td><td> Name of the Procedure.View or function which is blocked, if empty then check the script column for non DB Object session code being run.</td><tr>
-		<tr><td>Type </td><td> Procedure View or function </td><tr>
-		<tr><td>LoginName </td><td> Person or account running the Process</td><tr>
-		<tr><td>hostname </td><td> Machine connected to this session running the code</td><tr>
-		<tr><td>Program </td><td> Name of client program running the code e.g. SSMS</td><tr>
-		<tr><td>Script </td><td> First 500 characters of the script/procedure being run to help diagnose quickly or if name of procedure is blank.</td><tr>
-		<tr><td>LogID </td><td> ID of this record with full blocking information recorded in Table [DBA].[dbo].[BlockedPRocess]</td><tr>
-		<tr><td>BlockOrder </td><td> Hierarchical representation ofthe blocking order.</td><tr>
+		<tr><td>PSPID</td><td>Server Process ID of this process, If this is the Headblock this is the process to kill to free up the chain.</td><tr>
+		<tr><td>BSPID</td><td>Server Process ID of the Blocking process</td><tr>
+		<tr><td>Waitime(S)</td><td>Amount of time the process has been blocked in seconds</td><tr>
+		<tr><td>Database</td><td>Database on which the process is executing</td><tr>
+		<tr><td>Name</td><td>Name of the Procedure.View or function which is blocked, if empty then check the script column for non DB Object session code being run.</td><tr>
+		<tr><td>LoginName</td><td>Person or account running the Process</td><tr>
+		<tr><td>hostname</td><td>Machine connected to this session running the code</td><tr>
+		<tr><td>Program</td><td>Name of client program running the code e.g. SSMS</td><tr>
+		<tr><td>Script</td><td>First 500 characters of the script/procedure being run to help diagnose quickly or if name of procedure is blank.</td><tr>
+		<tr><td>LogID</td><td>ID of this record with full blocking information recorded in Table [DBA].[dbo].[BlockedPRocess]</td><tr>
+		<tr><td>BlockOrder</td><td>Hierarchical representation ofthe blocking order.</td><tr>
 		</table>
 		
 		<h4>Wait Information</h4>
@@ -156,7 +217,7 @@ FROM
 
 		EXEC msdb.dbo.sp_send_dbmail
 			@profile_name = 'Exchange Server',
-			@recipients = 'DHostler@Constructaquote.com;jeremai.smith@constructaquote.com;Jonathan.Miles@constructaquote.com',
+			@recipients = 'DHostler@Constructaquote.com;Jeremai.Smith@Constructaquote.com;Jonathon.Miles@Constructaquote.com;martin.clements@Constructaquote.com;Dan.Ralph@constructaquote.com',
 			@subject = 'Blocking processes',
 			@body = @Html,
 			@body_format = 'HTML',
@@ -165,4 +226,8 @@ FROM
 		SELECT @Html
 
 END
+
+
 GO
+
+

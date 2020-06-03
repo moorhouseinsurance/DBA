@@ -1,15 +1,8 @@
 SSMS
-On DBA run
-
-.\DBA\dbo.BlockedProcess.Table.sql
-.\DBA\dbo.uspReportBlockedProcess.StoredProcedure.sql
+On DBA run all scripts in .\DBA\
 
 on Shared run
 .\Shared\dbo.uspQueryToHtmlTable.StoredProcedure.sql
-
-On Transactor_Live run
-.\Transactor_Live\dbo.Synonyms.sq;
-.\Transactor_Live\dbo.uspBlockedProcessInsert.StoredProcedure.sql
 
 Update DBA.dbo.uspReportBlockedProcess set email recipients.
 Create SQLAgentjob
